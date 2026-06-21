@@ -1,0 +1,30 @@
+CREATE TABLE currencies (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    symbol TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE prices (
+    id SERIAL PRIMARY KEY,
+    currency_id INTEGER NOT NULL REFERENCES currencies(id),
+    price NUMERIC(20, 8) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE subscriptions (
+    id SERIAL PRIMARY KEY,
+    telegram_id BIGINT NOT NULL,
+    currency_id INTEGER NOT NULL REFERENCES currencies(id),
+    target_price NUMERIC(20, 8) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    UNIQUE (telegram_id, currency_id)
+);
+
+
+INSERT INTO currencies (name, symbol)
+VALUES
+('Bitcoin', 'BTC'),
+('Ethereum', 'ETH'),
+('Solana', 'SOL');
