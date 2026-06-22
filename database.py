@@ -74,3 +74,15 @@ async def get_subscriptions_by_currency(currency_id, pool):
 async def delete_subscription(subscription_id, pool):
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM subscriptions WHERE id = $1", subscription_id)
+        
+        
+async def get_user_subscriptions(telegram_id, pool):
+    async with pool.acquire() as conn:
+        return await conn.fetch(
+            """
+            SELECT s.target_price, c.symbol 
+            FROM subscriptions s
+            INNER JOIN currencies c ON s.currency_id = c.id
+            WHERE s.telegram_id = $1
+            """, telegram_id
+        )

@@ -3,7 +3,7 @@ from aiogram import Bot, Dispatcher, F
 from dotenv import load_dotenv
 from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from database import add_subscription, get_currency_by_symbol
+from database import add_subscription, get_currency_by_symbol, get_user_subscriptions
 from scraper import get_price
 
 
@@ -110,3 +110,23 @@ async def alert_cmd(message: Message):
         )
     except Exception as e:
         await message.answer("У вас уже есть активное уведомление на эту валюту.")
+        
+        
+@dp.message(Command('list'))
+async def list_subscriptions(message: Message):
+    pool = message.bot.data["db_pool"]
+    
+
+    subscriptions = await get_user_subscriptions(message.from_user.id, pool)
+    
+
+    if not subscriptions:
+        await message.answer("У вас пока нет активных подписок. Используйте команду /alert , чтобы добавить.")
+        return
+
+
+    text = "Ваши активные подписки:\n"
+    for sub in subscriptions:
+        text += f"{sub['symbol']} - порог: {sub['target_price']}$\n"
+        
+    await message.answer(text, parse_mode="Markdown")
