@@ -98,3 +98,13 @@ async def get_user_subscriptions(telegram_id, pool):
             WHERE s.telegram_id = $1
             """, telegram_id
         )
+        
+        
+async def add_currency(name, symbol, pool):
+    async with pool.acquire() as conn:
+        await conn.execute (
+            """
+            INSERT INTO currencies (name, symbol)
+            VALUES ($1, $2)
+            """, name, symbol
+        )

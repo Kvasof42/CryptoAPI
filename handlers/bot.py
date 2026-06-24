@@ -3,8 +3,9 @@ from aiogram import Bot, Dispatcher, F
 from dotenv import load_dotenv
 from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from database import add_subscription, get_currency_by_symbol, get_user_subscriptions, delete_user_subscription_by_symbol
+from database import add_subscription, get_currency_by_symbol, get_user_subscriptions, delete_user_subscription_by_symbol, add_currency
 from scraper import get_price
+from filters import IsAdmin
 
 
 load_dotenv()
@@ -148,7 +149,6 @@ async def cancel_subscriptions(message: Message):
     telegram_id = message.from_user.id
     
     try:
-        # Вызываем нашу новую функцию
         was_deleted = await delete_user_subscription_by_symbol(telegram_id, symbol, pool)
         
         if was_deleted:
@@ -157,6 +157,40 @@ async def cancel_subscriptions(message: Message):
             await message.answer(f"Активная подписка на валюту {symbol} не найдена.")
             
     except Exception as e:
-        # Логируем ошибку, чтобы бот не падал silent-модом
         print(f"Ошибка при удалении подписки: {e}")
         await message.answer("Произошла ошибка при отмене подписки. Попробуйте позже.")
+        
+        
+        
+@dp.message(Command('add_coin'), IsAdmin())
+async def added_currency(message: Message):
+    args = message.text.split()
+    
+    if len(args) != 3:
+        await message.answer(
+            "Неверный формат!\n"
+            "Используйте: /alert СИМВОЛ ЦЕНА\n"
+            "Пример: /add_coin [название_монеты] [сокращение монеты, пример BTC]"
+        )
+        return
+    
+    currency_name = args[1].lower().capitalize()
+    currency_symbol = args[2].upper()
+    pool = message.bot.data.get('dp_pool')
+    if not pool:
+        await message.answer('Ошибка')
+        
+    try:
+        await add_currency(
+            name=currency_name,
+            symbol=currency_symbol,
+            pool=pool
+        )
+        await message.answer(
+            f'Монета успешно добавлена\n',
+            f'Название: {currency_name}\n',
+            f'Тикер: {currency_symbol}'
+        )
+    except Exception as e:
+        await message.answer(f"Ошибка при добавлении монеты. Возможно, она уже существует.")
+        print(f"Ошибка в /add_coin: {e}")
