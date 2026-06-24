@@ -2,10 +2,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from decimal import Decimal
-import asyncio
-import aiohttp
-import scheduler
-from handlers.bot import bot, dp
 from database import create_pool, get_latest_price, get_price_history
 from datetime import datetime
 
@@ -35,14 +31,14 @@ class CryptoSchema(BaseModel):
 
 @app.get('/prices/{symbol}/latest', response_model=CryptoSchema)
 async def read_latest_price(symbol: str):
-    result = await get_latest_price(symbol.upper())
+    result = await get_latest_price(symbol.upper(), app.state.pool)
     if not result:
         raise HTTPException(status_code=404, detail="Currency not found")
     return result
     
 @app.get('/prices/{symbol}/history', response_model=list[CryptoSchema])
 async def read_price_history(symbol: str):
-    result = await get_price_history(symbol.upper())
+    result = await get_price_history(symbol.upper(), app.state.pool)
     if not result:
         raise HTTPException(status_code=404, detail="Currency not found")
     return result

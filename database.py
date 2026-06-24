@@ -71,9 +71,21 @@ async def get_subscriptions_by_currency(currency_id, pool):
             """, currency_id
         )
 
-async def delete_subscription(subscription_id, pool):
+async def delete_user_subscription_by_symbol(telegram_id, symbol, pool):
     async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM subscriptions WHERE id = $1", subscription_id)
+        currency = await conn.fetchrow("SELECT id FROM currencies WHERE symbol = $1", symbol)
+        if not currency:
+            return False
+        
+        result = await conn.execute(
+            """
+            DELETE FROM subscriptions 
+            WHERE telegram_id = $1 AND currency_id = $2
+            """, 
+            telegram_id, currency["id"]
+        )
+        
+        return result != "DELETE 0"
         
         
 async def get_user_subscriptions(telegram_id, pool):

@@ -3,7 +3,7 @@ from aiogram import Bot, Dispatcher, F
 from dotenv import load_dotenv
 from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from database import add_subscription, get_currency_by_symbol, get_user_subscriptions
+from database import add_subscription, get_currency_by_symbol, get_user_subscriptions, delete_user_subscription_by_symbol
 from scraper import get_price
 
 
@@ -130,3 +130,33 @@ async def list_subscriptions(message: Message):
         text += f"{sub['symbol']} - порог: {sub['target_price']}$\n"
         
     await message.answer(text, parse_mode="Markdown")
+    
+    
+@dp.message(Command('cancel'))
+async def cancel_subscriptions(message: Message):
+    args = message.text.split()
+    
+    if len(args) != 2:
+        await message.answer(
+            "Неверный формат.\n"
+            "Используйте: /cancel BTC"
+        )
+        return
+    
+    symbol = args[1].upper()
+    pool = message.bot.data["db_pool"]
+    telegram_id = message.from_user.id
+    
+    try:
+        # Вызываем нашу новую функцию
+        was_deleted = await delete_user_subscription_by_symbol(telegram_id, symbol, pool)
+        
+        if was_deleted:
+            await message.answer(f"Подписка на {symbol} успешно отменена!")
+        else:
+            await message.answer(f"Активная подписка на валюту {symbol} не найдена.")
+            
+    except Exception as e:
+        # Логируем ошибку, чтобы бот не падал silent-модом
+        print(f"Ошибка при удалении подписки: {e}")
+        await message.answer("Произошла ошибка при отмене подписки. Попробуйте позже.")
