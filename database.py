@@ -108,3 +108,12 @@ async def add_currency(name, symbol, pool):
             VALUES ($1, $2)
             """, name, symbol
         )
+        
+        
+        
+async def delete_subscription(subscription_id, pool):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "DELETE FROM subscriptions WHERE id = $1",
+            subscription_id
+        )
