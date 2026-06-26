@@ -169,7 +169,7 @@ async def added_currency(message: Message):
     if len(args) != 3:
         await message.answer(
             "Неверный формат!\n"
-            "Используйте: /alert СИМВОЛ ЦЕНА\n"
+            "Используйте другую форму\n"
             "Пример: /add_coin [название_монеты] [сокращение монеты, пример BTC]"
         )
         return

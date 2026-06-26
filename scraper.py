@@ -1,4 +1,5 @@
 import aiohttp
+from decimal import Decimal
 
 async def get_price(symbol: str, session: aiohttp.ClientSession):
     url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}USDT"
@@ -9,5 +10,5 @@ async def get_price(symbol: str, session: aiohttp.ClientSession):
         data = await response.json()
         return {
             "symbol": symbol,
-            "price": float(data["price"])
+            "price": Decimal(data["price"])
         }

@@ -17,7 +17,7 @@ async def add_price(currency_id, price, pool):
             currency_id, price
         )
 
-async def get_latest_price(symbol, pool=None):
+async def get_latest_price(symbol, pool):
     async with pool.acquire() as conn:
         return await conn.fetchrow(
             """

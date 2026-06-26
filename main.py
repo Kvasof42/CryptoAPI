@@ -8,18 +8,12 @@ from datetime import datetime
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Запуск сервера...")
-    
-
     pool = await create_pool()
-
-    
     app.state.pool = pool
-
     
     yield
     
     print("Остановка сервера...")
-
     await pool.close()
 
 app = FastAPI(lifespan=lifespan)
@@ -34,11 +28,11 @@ async def read_latest_price(symbol: str):
     result = await get_latest_price(symbol.upper(), app.state.pool)
     if not result:
         raise HTTPException(status_code=404, detail="Currency not found")
-    return result
+    return dict(result)
     
 @app.get('/prices/{symbol}/history', response_model=list[CryptoSchema])
 async def read_price_history(symbol: str):
     result = await get_price_history(symbol.upper(), app.state.pool)
     if not result:
         raise HTTPException(status_code=404, detail="Currency not found")
-    return result
+    return [dict(row) for row in result]
