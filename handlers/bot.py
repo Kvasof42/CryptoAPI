@@ -1,9 +1,11 @@
 import os
-from aiogram import Bot, Dispatcher, F
+from aiogram import Bot, Dispatcher, F, types
 from dotenv import load_dotenv
 from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from database import add_subscription, get_currency_by_symbol, get_user_subscriptions, delete_user_subscription_by_symbol, add_currency
+from database import (add_subscription, get_currency_by_symbol, get_user_subscriptions,
+delete_user_subscription_by_symbol, add_currency, get_currencies_paginated,
+get_total_currencies, get_currencies, get_latest_price)
 from scraper import get_price
 from filters import IsAdmin
 
@@ -17,14 +19,20 @@ if not TOKEN:
 bot = Bot(TOKEN)
 dp = Dispatcher()
 
+async def get_crypto_keyboard(pool):
+    currencies = await get_currencies(pool)
+    
+    keyboard_buttons = []
+    for currency in currencies:
+        button = InlineKeyboardButton(
+            text=f"{currency['symbol']}", 
+            callback_data=f"price_{currency['symbol']}"
+        )
+        keyboard_buttons.append([button])
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
 
-crypto_inline_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="Bitcoin (BTC)", callback_data="price_BTC")],
-        [InlineKeyboardButton(text="Ethereum (ETH)", callback_data="price_ETH")],
-        [InlineKeyboardButton(text="Solana (SOL)", callback_data="price_SOL")]
-    ]
-)
+
 
 @dp.message(Command("start"))
 async def start(message: Message):
@@ -36,26 +44,39 @@ async def start(message: Message):
         "Пример: /alert BTC 65000"
     )
 
-@dp.message(Command("price"))
-async def price_cmd(message: Message):
-    await message.answer("Выберите валюту для проверки цены:", reply_markup=crypto_inline_keyboard)
 
-# Хэндлер, который ловит нажатия на кнопки цен
+@dp.message(Command("help"))
+async def help_handler(message: types.Message):
+    help_text = (
+        "Доступные команды бота:\n\n"
+        "Информация:\n\n"
+        "/list - посмотреть список доступных для отслеживания монет.\n"
+        "/price - посмотреть цену валюты.\n\n"
+        "Подписки:\n\n"
+        "/alert [символ] [цена] - установить уведомление, когда цена упадет до указанного порога.\n"
+        "/subscriptions — список ваших активных ценовых уведомлений.\n"
+        "/cancel [символ] - удалить подписку на уведомление для конкретной монеты."
+    )
+    await message.answer(help_text, parse_mode="Markdown")
+
+
+@dp.message(Command("price"))
+async def price_command(message: types.Message):
+    pool = bot.data["db_pool"]
+    keyboard = await get_crypto_keyboard(pool)
+    await message.answer("Выберите монету для просмотра цены:", reply_markup=keyboard)
+
 @dp.callback_query(F.data.startswith("price_"))
-async def process_price_callback(callback: CallbackQuery):
+async def process_price_callback(callback: types.CallbackQuery):
     symbol = callback.data.split("_")[1]
     
-
-    session = callback.bot.data["http_session"]
+    pool = bot.data["db_pool"]
+    price_data = await get_latest_price(symbol, pool)
     
-    try:
-        data = await get_price(symbol, session)
-        await callback.message.edit_text(
-            f"{symbol}\nТекущая цена: {data['price']}$",
-            reply_markup=crypto_inline_keyboard
-        )
-    except Exception as e:
-        await callback.message.answer(f"Ошибка при запросе к Binance: {e}")
+    if price_data:
+        await callback.message.answer(f"{symbol}: {price_data['price']}$")
+    else:
+        await callback.message.answer("Данные по этой монете еще не загружены.")
     
     await callback.answer()
 
@@ -113,7 +134,7 @@ async def alert_cmd(message: Message):
         await message.answer("У вас уже есть активное уведомление на эту валюту.")
         
         
-@dp.message(Command('list'))
+@dp.message(Command('subscriptions'))
 async def list_subscriptions(message: Message):
     pool = message.bot.data["db_pool"]
     
@@ -162,35 +183,69 @@ async def cancel_subscriptions(message: Message):
         
         
         
-@dp.message(Command('add_coin'), IsAdmin())
-async def added_currency(message: Message):
+@dp.message(Command("add_coin"), IsAdmin())
+async def add_coin_handler(message: types.Message):
     args = message.text.split()
     
     if len(args) != 3:
         await message.answer(
             "Неверный формат!\n"
-            "Используйте другую форму\n"
-            "Пример: /add_coin [название_монеты] [сокращение монеты, пример BTC]"
+            "Пример: /add_coin Bitcoin BTC"
         )
         return
+        
+    name = args[1]
+    symbol = args[2].upper()
     
-    currency_name = args[1].lower().capitalize()
-    currency_symbol = args[2].upper()
-    pool = message.bot.data.get('dp_pool')
-    if not pool:
-        await message.answer('Ошибка')
+    session = bot.data["http_session"]
+    pool = bot.data["db_pool"]
+    
+    try:
+        await get_price(symbol, session)
+    except Exception:
+        await message.answer(f"Ошибка: {symbol} не существует на бирже Binance.")
+        return
         
     try:
-        await add_currency(
-            name=currency_name,
-            symbol=currency_symbol,
-            pool=pool
-        )
-        await message.answer(
-            f'Монета успешно добавлена\n',
-            f'Название: {currency_name}\n',
-            f'Тикер: {currency_symbol}'
-        )
-    except Exception as e:
-        await message.answer(f"Ошибка при добавлении монеты. Возможно, она уже существует.")
-        print(f"Ошибка в /add_coin: {e}")
+        await add_currency(name, symbol, pool)
+        await message.answer(f"Монета {name} ({symbol}) успешно добавлена в базу!")
+    except Exception:
+        await message.answer("Ошибка при добавлении. Возможно, монета или сокращение уже существуют.")
+        
+async def get_list_keyboard(page, total_pages):
+    buttons = []
+    if page > 1:
+        buttons.append(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"list_{page-1}"))
+    if page < total_pages:
+        buttons.append(InlineKeyboardButton(text="Вперед ➡️", callback_data=f"list_{page+1}"))
+    
+    return InlineKeyboardMarkup(inline_keyboard=[buttons]) if buttons else None
+
+@dp.message(Command("list"))
+async def list_currencies(message: types.Message):
+    await show_currencies(message, 1)
+
+@dp.callback_query(F.data.startswith("list_"))
+async def pagination_handler(callback: types.CallbackQuery):
+    page = int(callback.data.split("_")[1])
+    await show_currencies(callback.message, page, is_callback=True)
+
+async def show_currencies(message, page, is_callback=False):
+    limit = 10
+    offset = (page - 1) * limit
+    
+    pool = bot.data["db_pool"]
+    currencies = await get_currencies_paginated(pool, limit, offset)
+    total = await get_total_currencies(pool)
+    total_pages = (total + limit - 1) // limit
+    
+    text = f"Список доступных монет (Страница {page}/{total_pages}):\n\n"
+    for c in currencies:
+        text += f"{c['name']} ({c['symbol']})\n"
+    
+    keyboard = await get_list_keyboard(page, total_pages)
+    
+    if is_callback:
+        await message.edit_text(text, reply_markup=keyboard)
+    else:
+        await message.answer(text, reply_markup=keyboard)

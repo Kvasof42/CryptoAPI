@@ -117,3 +117,15 @@ async def delete_subscription(subscription_id, pool):
             "DELETE FROM subscriptions WHERE id = $1",
             subscription_id
         )
+        
+        
+async def get_currencies_paginated(pool, limit, offset):
+    async with pool.acquire() as conn:
+        return await conn.fetch(
+            "SELECT id, name, symbol FROM currencies ORDER BY id LIMIT $1 OFFSET $2",
+            limit, offset
+        )
+
+async def get_total_currencies(pool):
+    async with pool.acquire() as conn:
+        return await conn.fetchval("SELECT COUNT(*) FROM currencies")
