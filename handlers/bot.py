@@ -5,10 +5,12 @@ from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from database import (add_subscription, get_currency_by_symbol, get_user_subscriptions,
 delete_user_subscription_by_symbol, add_currency, get_currencies_paginated,
-get_total_currencies, get_currencies, get_latest_price)
+get_total_currencies, get_currencies, get_latest_price, get_price_history_limited)
 from scraper import get_price
 from filters import IsAdmin
-
+import io
+import matplotlib.pyplot as plt
+from aiogram.types import BufferedInputFile
 
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
@@ -249,3 +251,43 @@ async def show_currencies(message, page, is_callback=False):
         await message.edit_text(text, reply_markup=keyboard)
     else:
         await message.answer(text, reply_markup=keyboard)
+        
+        
+        
+@dp.message(Command("history"))
+async def history_handler(message: Message):
+    args = message.text.split()
+    if len(args) != 2:
+        await message.answer("Использование: /history СИМВОЛ (например, /history BTC)")
+        return
+
+    symbol = args[1].upper()
+    pool = message.bot.data["db_pool"]
+
+    data = await get_price_history_limited(symbol, pool)
+    
+    if not data:
+        await message.answer("Данные не найдены. Возможно, монета не существует или еще нет записей.")
+        return
+
+    prices = [float(row['price']) for row in reversed(data)]
+    times = [row['created_at'].strftime("%H:%M") for row in reversed(data)]
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(times, prices, marker='o', linestyle='-', color='b')
+    plt.title(f"История цен {symbol} (последние 50 записей)")
+    plt.xlabel("Время")
+    plt.ylabel("Цена (USDT)")
+    plt.xticks(rotation=45)
+    plt.grid(True)
+    plt.tight_layout()
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    plt.close()
+
+    await message.answer_photo(
+        photo=BufferedInputFile(buf.read(), filename="chart.png"),
+        caption=f"График цен для {symbol}"
+    )

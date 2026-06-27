@@ -129,3 +129,16 @@ async def get_currencies_paginated(pool, limit, offset):
 async def get_total_currencies(pool):
     async with pool.acquire() as conn:
         return await conn.fetchval("SELECT COUNT(*) FROM currencies")
+    
+    
+async def get_price_history_limited(symbol, pool, limit=50):
+    async with pool.acquire() as conn:
+        return await conn.fetch(
+            """
+            SELECT prices.price, prices.created_at
+            FROM prices
+            INNER JOIN currencies ON prices.currency_id = currencies.id
+            WHERE currencies.symbol = $1
+            ORDER BY prices.created_at DESC LIMIT $2
+            """, symbol, limit
+        )
